@@ -156,7 +156,7 @@ func Login() gin.HandlerFunc {
 		log.Println(*&foundUser.UserId, foundUser.UserId)
 		log.Println(token, refreshToken, foundUser.Email, foundUser.FirstName, foundUser.LastName)
 		helper.UpdateAllTokens(token, refreshToken, foundUser.UserId)
-		err = userCollection.FindOne(ctx, bson.M{"user_id": foundUser.UserId}).Decode(&foundUser)
+		err = userCollection.FindOne(ctx, bson.M{"userid": foundUser.UserId}).Decode(&foundUser)
 		defer cancel()
 		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
@@ -169,21 +169,7 @@ func Login() gin.HandlerFunc {
 
 func GetUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		//userId := c.Param("user_id")
-		//if err := helper.MatchUserTypeToUid(c, userId); err != nil {
-		//	c.JSON(400, gin.H{"error": err.Error()})
-		//	return
-		//}
-		//var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
-		//var user models.User
-		//log.Println(userId)
-		//err := userCollection.FindOne(ctx, bson.M{"user_id": c.Get("user_id")}).Decode(&user)
-		//if err != nil {
-		//	c.JSON(500, gin.H{"error": "An error occurred finding user"})
-		//	return
-		//}
-		//defer cancel()
-		//c.JSON(200, user)
+
 		userId := c.Param("user_id")
 
 		if err := helper.MatchUserTypeToUid(c, userId); err != nil {
@@ -194,7 +180,7 @@ func GetUser() gin.HandlerFunc {
 
 		var user models.User
 
-		err := userCollection.FindOne(ctx, bson.M{"user_id": userId}).Decode(&user)
+		err := userCollection.FindOne(ctx, bson.M{"userid": userId}).Decode(&user)
 		defer cancel()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
