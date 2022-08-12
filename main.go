@@ -16,7 +16,8 @@ func main() {
 	router.Use(gin.Logger())
 	routes.AuthRoutes(router)
 	routes.UserRoutes(router)
-
+	// you can set your trust proxy here
+	//router.SetTrustedProxies([]string{"192.168.1.2"})
 	router.GET("/api-1/", func(c *gin.Context) {
 		c.JSON(200, gin.H{"success": "Access granted for api-1"})
 	})

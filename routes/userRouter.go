@@ -6,7 +6,7 @@ import (
 	"golang-jwt-project/middleware"
 )
 
-func userRoutes(incomingRoutes *gin.Engine) {
+func UserRoutes(incomingRoutes *gin.Engine) {
 	incomingRoutes.Use(middleware.Authenticated())
 	incomingRoutes.GET("/users", controller.GetUsers())
 	incomingRoutes.GET("/users/:user_id", controller.GetUser())

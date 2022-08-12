@@ -11,28 +11,51 @@ import (
 	"golang-jwt-project/database"
 	helper "golang-jwt-project/helpers"
 	"golang-jwt-project/models"
+	"golang.org/x/crypto/bcrypt"
 	"log"
+	"net/http"
+	"strconv"
 	"time"
 )
 
 var userCollection *mongo.Collection = database.OpenCollection(database.Client, "user")
 var validate = validator.New()
 
-func HashPassword() {
+func HashPassword(password string) string {
+	userHashPassword, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+	if err != nil {
+		log.Panicln(err)
+	}
+	return string(userHashPassword)
 
 }
 
-func varifyPassword(userPassword string, providedPassword string) bool {
-
+func verifyPassword(userPassword string, providedHashedPassword string) (bool, string) {
+	err := bcrypt.CompareHashAndPassword(
+		[]byte(providedHashedPassword),
+		[]byte(userPassword),
+	)
+	msg := ""
+	check := true
+	if err != nil {
+		msg = fmt.Sprintf("Email or password is incorrrect")
+		check = false
+		return check, msg
+	}
+	return check, msg
 }
 
 func Signup() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
 		var user models.User
+		//convert to what golang understands
 		if err := c.BindJSON(&user); err != nil {
 			c.JSON(400, gin.H{"error": err.Error()})
+			log.Panicln(err.Error())
+			return
 		}
+		// validating
 		validatorErr := validate.Struct(user)
 		if validatorErr != nil {
 			c.JSON(400, gin.H{"error": validatorErr.Error()})
@@ -42,21 +65,27 @@ func Signup() gin.HandlerFunc {
 		defer cancel()
 		if err != nil {
 			c.JSON(400, gin.H{"error": "Error occurred while checking email"})
-			log.Panicln(err)
+			log.Panicln(err.Error())
 			return
 		}
 		if count > 0 {
 			c.JSON(400, gin.H{"error": "Email already exists"})
+			return
 		}
+		password := HashPassword(*user.Password)
+		user.Password = &password
+
 		count, err = userCollection.CountDocuments(ctx, bson.M{"phone": user.Phone})
 		defer cancel()
 		if err != nil {
 			c.JSON(400, gin.H{"error": "Error occurred while checking phone"})
-			log.Panicln(err)
+			log.Panicln(err.Error())
 			return
 		}
 		if count > 0 {
 			c.JSON(400, gin.H{"error": "Phone number already exists"})
+			log.Panicln(err.Error())
+			return
 		}
 		user.CreatedAt, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
 		user.UpdatedAt, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
@@ -67,10 +96,10 @@ func Signup() gin.HandlerFunc {
 			*user.FirstName,
 			*user.LastName,
 			*user.UserType,
-			user.UserId)
+			*&user.UserId)
 		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
-			log.Panicln(err)
+			log.Panicln(err.Error())
 			return
 		}
 		user.Token = &token
@@ -103,29 +132,134 @@ func Login() gin.HandlerFunc {
 			c.JSON(500, gin.H{"error": "email or password is incorrect"})
 			return
 		}
-		paswordIsValid, msg := varifyPassword(*user.Password, *foundUser.Password)
+
+		passwordIsValid, msg := verifyPassword(*user.Password, *foundUser.Password)
 		defer cancel()
+		if passwordIsValid != true {
+			c.JSON(500, gin.H{"error": msg})
+			return
+		}
+		if foundUser.Email == nil {
+			c.JSON(500, gin.H{"error": "user not found"})
+			return
+		}
+		token, refreshToken, err := helper.GenerateAllTokens(
+			*foundUser.Email,
+			*foundUser.FirstName,
+			*foundUser.LastName,
+			*foundUser.UserType,
+			foundUser.UserId)
+		if err != nil {
+			c.JSON(500, gin.H{"Error": "Error generating token"})
+			return
+		}
+		log.Println(*&foundUser.UserId, foundUser.UserId)
+		log.Println(token, refreshToken, foundUser.Email, foundUser.FirstName, foundUser.LastName)
+		helper.UpdateAllTokens(token, refreshToken, foundUser.UserId)
+		err = userCollection.FindOne(ctx, bson.M{"user_id": foundUser.UserId}).Decode(&foundUser)
+		defer cancel()
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, foundUser)
 	}
 
 }
 
 func GetUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		//userId := c.Param("user_id")
+		//if err := helper.MatchUserTypeToUid(c, userId); err != nil {
+		//	c.JSON(400, gin.H{"error": err.Error()})
+		//	return
+		//}
+		//var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		//var user models.User
+		//log.Println(userId)
+		//err := userCollection.FindOne(ctx, bson.M{"user_id": c.Get("user_id")}).Decode(&user)
+		//if err != nil {
+		//	c.JSON(500, gin.H{"error": "An error occurred finding user"})
+		//	return
+		//}
+		//defer cancel()
+		//c.JSON(200, user)
 		userId := c.Param("user_id")
+
 		if err := helper.MatchUserTypeToUid(c, userId); err != nil {
-			c.JSON(400, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+
 		var user models.User
-		if err := userCollection.FindOne(ctx, bson.M{"user_id": userId}).Decode(&user); err != nil {
-			c.JSON(500, gin.H{"error": "An error occurred finding user"})
+
+		err := userCollection.FindOne(ctx, bson.M{"user_id": c.GetString("uid")}).Decode(&user)
+		defer cancel()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		defer cancel()
-		c.JSON(200, user)
+		log.Println(userId, c.GetString("uid"))
+		c.JSON(http.StatusOK, user)
 	}
 }
-func GetUsers() {
+func GetUsers() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		if err := helper.CheckUserType(c, "ADMIN"); err != nil {
+			c.JSON(400, gin.H{"error": "Unauthorized access "})
+		}
+		recordPerPage, err := strconv.Atoi(c.Query("recordPerPage"))
+		if err != nil || recordPerPage < 1 {
+			recordPerPage = 10
+		}
+		page, err := strconv.Atoi(c.Query("page"))
+		if err != nil || page < 1 {
+			page = 1
+		}
+		startIndex := (page - 1) * recordPerPage
+		startIndex, err = strconv.Atoi(c.Query("startIndex"))
+		matchStage := bson.D{{"$match", bson.D{{}}}}
+		// ordering of the users
+		groupStage := bson.D{
+			{"$group", bson.D{
+				// ordering user by id
+				{"_id", bson.D{
+					{"_id", "null"},
+				}},
+				// summing the unique users together
+				{"total_count", bson.D{
+					{"$sum", 1},
+				}},
+				// append all users to return
+				{"data", bson.D{
+					{"$push", "$$ROOT"},
+				}},
+			}},
+		}
+		// fields to be shown in the frontend
+		projectStage := bson.D{
+			{"$project", bson.D{
+				{"_id", 0},
+				{"total_count", 1},
+				{"user_items", bson.D{
+					{"$slice", []interface{}{"$data", startIndex, recordPerPage}},
+				}},
+			}},
+		}
+		result, err := userCollection.Aggregate(ctx, mongo.Pipeline{
+			matchStage, groupStage, projectStage,
+		})
+		defer cancel()
+		if err != nil {
+			c.JSON(500, gin.H{"error": "error occurred while listing user items"})
+		}
+		var allUsers []bson.M
+		if err = result.All(ctx, &allUsers); err != nil {
+			log.Fatal(err)
+		}
+		c.JSON(200, allUsers[0])
 
+	}
 }
