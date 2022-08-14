@@ -17,7 +17,7 @@ type SignedDetails struct {
 	Email     string
 	FirstName string
 	LastName  string
-	Uid       string
+	UserId    string
 	UserType  string
 	jwt.StandardClaims
 }
@@ -35,7 +35,7 @@ func GenerateAllTokens(
 		Email:     email,
 		FirstName: firstName,
 		LastName:  lastName,
-		Uid:       userId,
+		UserId:    userId,
 		UserType:  userType,
 		StandardClaims: jwt.StandardClaims{
 			ExpiresAt: time.Now().Add(time.Hour * time.Duration(24)).Unix(),
@@ -71,7 +71,8 @@ func UpdateAllTokens(signedToken string, signedRefreshToken string, userId strin
 	opt := options.UpdateOptions{
 		Upsert: &upsert,
 	}
-	_, err := userCollection.UpdateOne(ctx,
+	_, err := userCollection.UpdateOne(
+		ctx,
 		filter,
 		bson.D{
 			{"$set", UpdateObj},

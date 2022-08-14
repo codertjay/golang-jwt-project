@@ -52,7 +52,6 @@ func Signup() gin.HandlerFunc {
 		//convert to what golang understands
 		if err := c.BindJSON(&user); err != nil {
 			c.JSON(400, gin.H{"error": err.Error()})
-			log.Panicln(err.Error())
 			return
 		}
 		// validating
@@ -156,7 +155,7 @@ func Login() gin.HandlerFunc {
 		log.Println(*&foundUser.UserId, foundUser.UserId)
 		log.Println(token, refreshToken, foundUser.Email, foundUser.FirstName, foundUser.LastName)
 		helper.UpdateAllTokens(token, refreshToken, foundUser.UserId)
-		err = userCollection.FindOne(ctx, bson.M{"userid": foundUser.UserId}).Decode(&foundUser)
+		err = userCollection.FindOne(ctx, bson.M{"user_id": foundUser.UserId}).Decode(&foundUser)
 		defer cancel()
 		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
@@ -180,13 +179,13 @@ func GetUser() gin.HandlerFunc {
 
 		var user models.User
 
-		err := userCollection.FindOne(ctx, bson.M{"userid": userId}).Decode(&user)
+		err := userCollection.FindOne(ctx, bson.M{"user_id": userId}).Decode(&user)
 		defer cancel()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		log.Println(userId, c.GetString("uid"))
+		log.Println(userId, c.GetString("user_id"))
 		c.JSON(http.StatusOK, user)
 	}
 }
